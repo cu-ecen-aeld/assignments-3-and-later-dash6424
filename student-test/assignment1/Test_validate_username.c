@@ -14,5 +14,7 @@
 */
 void test_validate_my_username()
 {
-   TEST_ASSERT_EQUAL_STRING_MESSAGE(my_username() , malloc_username_from_conf_file(), "passed"); 
+   char *username = malloc_username_from_conf_file();
+   TEST_ASSERT_EQUAL_STRING_MESSAGE(my_username() , username, "passed");
+   free(username);
 }
