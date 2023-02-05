@@ -85,7 +85,8 @@ bool do_exec(int count, ...)
             perror ("execv failure");
 	}
 	//Comes here only if there's an error in execv
-	exit(1);
+        printf("Error executing execv: %d\n", errno);
+        exit(1);
     }
     else  // Wait process.
     {
@@ -93,6 +94,7 @@ bool do_exec(int count, ...)
 	pid_t wait_pid = waitpid(pid, &status, 0);
 	if(wait_pid == -1)
 	{
+            printf("Error executing wait_pid: %d\n", errno);
             perror("wait failure");
 	    return false;
 	}
