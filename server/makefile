@@ -1,13 +1,11 @@
 # Makefile for socket program.
 # Author - Daanish Shariff
 
-all: aesdsocket
+CC=gcc
+CFLAGS=-Wall -Werror
 
-CROSS_COMPILE =
-CC = gcc
-
-aesdsocket: aesdsocket.c
-		$(CROSS_COMPILE)$(CC) aesdsocket.c -Wall -Werror -o aesdsocket
+all: aesdsocket.c
+	$(CROSS_COMPILE)$(CC) $(CFLAGS) aesdsocket.c -o aesdsocket
 
 clean:
-	rm -rf *.o aesdsocket
+	rm -f *.o aesdsocket
