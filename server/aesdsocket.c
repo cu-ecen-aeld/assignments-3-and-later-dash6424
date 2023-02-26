@@ -1,3 +1,14 @@
+/*
+ * Filename: aesdsocket.c
+ * File Description:
+ * This file contains the socket implementation for A5.
+ * This code has been compiled with GCC using VS Code Editor.
+ * Author: Daanish Shariff
+ */
+
+/*==========================================================================
+  Include files
+========================================================================== */
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -16,15 +27,33 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
+/*==========================================================================
+  MACROS
+========================================================================== */
 #define BACKLOG 15
 #define INIT_BUF_SIZE 1024
 
-int fd;
-int sfd;
-int client_fd;
-char *storage_buffer;
-char *read_buffer;
+/*==========================================================================
+  Global Declarations
+========================================================================== */
+int fd;             //Local file descriptor
+int sfd;            //Socket file descriptor
+int client_fd;      //Client socket file descriptor
 
+/*==========================================================================
+  Function Definitions
+========================================================================== */
+/* Description: sig_handler
+ * Signal Handler function to terminate process
+ * based on signal received from SIGINT or SIGTERM.
+ * Ensure only reentrant calls are made in sig_handler.
+ *
+ * Parameters:
+ * signum	: Holds the signal number received.
+ *
+ * Return Type:
+ * void     : No return type required.
+ */
 void sig_handler(int signum)
 {
     if(signum == SIGINT)
@@ -34,20 +63,6 @@ void sig_handler(int signum)
     else if(signum == SIGTERM)
     {
         syslog(LOG_DEBUG, "SIGTERM Caught signal, exiting");
-    }
-
-    // Free malloced memory.
-    if(storage_buffer)
-    {
-        free(storage_buffer);
-        storage_buffer = NULL;
-    }
-
-    // free read buffer
-    if(read_buffer)
-    {
-        free(read_buffer);
-        read_buffer = NULL;
     }
 
     //Close client_fd
@@ -72,6 +87,16 @@ void sig_handler(int signum)
     exit(EXIT_SUCCESS);
 }
 
+/* Description: daemon_create
+ * Creates a daemon background process for running
+ * the server.
+ *
+ * Parameters:
+ * void     : No return type required.
+ *
+ * Return Type:
+ * void     : No return type required.
+ */
 static int daemon_create()
 {
     /* Create new process */
@@ -103,6 +128,16 @@ static int daemon_create()
     return 0;
 }
 
+/* Description: main
+ * Main function for socket implementation.
+ *
+ * Parameters:
+ * argc     : argument count.
+ * argv     : argument string array.
+ *
+ * Return Type:
+ * int     : 0 on success. -1 on error.
+ */
 int main(int argc, char **argv)
 {
     openlog(NULL, 0, LOG_USER);
@@ -202,21 +237,11 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    /* Buffer for receiving data from client */
-    storage_buffer = (char *)malloc(INIT_BUF_SIZE);
-    if(!storage_buffer)
-    {
-        perror("malloc failure: ");
-        return -1;
-    }
-
     /* Open a file */
     fd = open("/var/tmp/aesdsocketdata", (O_CREAT | O_TRUNC | O_RDWR), (S_IRWXU | S_IRWXG | S_IROTH));
     if(fd == -1)
     {
         perror("Error opening socket file:");
-        free(storage_buffer);
-        storage_buffer = NULL;
         return -1;
     }
 
@@ -224,8 +249,12 @@ int main(int argc, char **argv)
     char buffer[INIT_BUF_SIZE];                 // Static buffer of 1024 bytes to receive data
     int storage_buffer_size = INIT_BUF_SIZE;    // Static buffer size
     int storage_buffer_size_cnt = 1;            // Count to indicate the number of string received from client
+    /* Storage buffer to read from socket */
+    char *storage_buffer;
+    /* Storage buffer to write to socket */
+    char *read_buffer;
 
-    int complete_flag = 0;                      // Idetentifier of string complete.
+    int complete_flag = 1;                      // Idetentifier of string complete.
 
     struct sockaddr_storage test_addr;          // Test addr to populate from accept()
     socklen_t addr_size = sizeof(test_addr);    // Size of test addr
@@ -241,8 +270,25 @@ int main(int argc, char **argv)
         client_fd = accept(sfd, (struct sockaddr *)&test_addr, &addr_size);
         if(client_fd == -1)
         {
+            if(storage_buffer)
+            {
+                free(storage_buffer);
+                storage_buffer = NULL;
+            }
             perror("accept failure: ");
             continue;                           // Try again
+        }
+
+        if(complete_flag)
+        {
+            /* Buffer for receiving data from client */
+            storage_buffer = (char *)malloc(INIT_BUF_SIZE);
+            if(!storage_buffer)
+            {
+                perror("malloc failure: ");
+                return -1;
+            }
+            complete_flag = 0;
         }
 
         // Print the IP address of the client.
@@ -291,8 +337,6 @@ int main(int argc, char **argv)
         // Copy to local fd and then rewrite/resend it back to client.
         if(1 == complete_flag)
         {
-            complete_flag = 0;
-
             //Write to file
             int wr_bytes = write(fd, storage_buffer, bytes_to_write);
             file_bytes += wr_bytes;
@@ -324,7 +368,8 @@ int main(int argc, char **argv)
                 read_buffer = NULL;
             }
             //Cleanup
-            storage_buffer = realloc(storage_buffer, INIT_BUF_SIZE);
+            free(storage_buffer);
+            storage_buffer = NULL;
             storage_buffer_size_cnt = 1;
             storage_buffer_size = INIT_BUF_SIZE;
         }
