@@ -175,10 +175,21 @@ void *timer_thread(void *thread_params)
         }
         ts.tv_sec += TIME_PERIOD;
 
+        /* If signal received exit thread */
+        if(complete_exec)
+        {
+            pthread_exit(NULL);
+        }
+
         if(0 != clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, NULL))
         {
             perror("clock nanosleep failed: ");
             break;
+        }
+        /* If signal received exit thread */
+        if(complete_exec)
+        {
+            pthread_exit(NULL);
         }
         
         t = time(NULL);
@@ -575,7 +586,7 @@ int main(int argc, char **argv)
     }
 
     /* Thread join timer threads */
-    //pthread_join(timer_node.thread_id, NULL);
+    pthread_join(timer_node.thread_id, NULL);
 
     //Destroy pthread
     pthread_mutex_destroy(&mutex);
