@@ -8,6 +8,9 @@
  *
  */
 
+/*==========================================================================
+   INCLUDES
+========================================================================== */
 #ifdef __KERNEL__
 #include <linux/string.h>
 #else
@@ -15,6 +18,12 @@
 #endif
 
 #include "aesd-circular-buffer.h"
+
+/*==========================================================================
+   MACROS
+========================================================================== */
+#define TRUE 1
+#define FALSE 0
 
 /**
  * @param buffer the buffer to search for corresponding offset.  Any necessary locking must be performed by caller.
@@ -29,10 +38,53 @@
 struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct aesd_circular_buffer *buffer,
             size_t char_offset, size_t *entry_offset_byte_rtn )
 {
-    /**
-    * TODO: implement per description
-    */
-    return NULL;
+    /* NULL check */
+    if((!buffer) || (!entry_offset_byte_rtn))
+    {
+        return NULL;
+    }
+
+    /* total bytes store the overall size of all the entries.
+     * tmp_offset decremental offset to find the offset within an entry */
+    size_t total_bytes = 0, tmp_offset = char_offset;
+
+    /* read offset points to oldest buffer in the queue*/
+    uint8_t read_offset = buffer->out_offs, i = 0;
+
+    /* Iterate through the CB queue and find the required entry and offset */
+    for(i=0; i<AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; i++)
+    {
+        total_bytes += buffer->entry[read_offset].size;
+
+        /* If char offset found in given entry, break. */
+        if(char_offset < total_bytes)
+        {
+            break;
+        }
+
+        /* Decrement temp offset by each entry's size */
+        tmp_offset -= buffer->entry[read_offset].size;
+
+        /* if read overflows, reset to 0 */
+        read_offset++;
+        if(read_offset == AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)
+        {
+            read_offset = 0;
+        }
+
+    }
+    /* Check if total_bytes are valid and char_offset is in bound */
+    if((total_bytes < 0) || (char_offset >= total_bytes))
+    {
+        *entry_offset_byte_rtn = 0;
+        return NULL;
+    }
+
+    /* Actual entry number based on the read offset */
+    *entry_offset_byte_rtn = tmp_offset;
+
+    /* Return the actual buffer entry */
+    return &(buffer->entry[read_offset]);
 }
 
 /**
@@ -44,9 +96,36 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 */
 void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
-    /**
-    * TODO: implement per description
-    */
+    /* NULL check for pointers */
+    if((!buffer) || (!add_entry))
+    {
+        return;
+    }
+
+    /* Populate the entry buffer irrespective of buffer is full or not */
+    buffer->entry[buffer->in_offs].buffptr = add_entry->buffptr;
+    buffer->entry[buffer->in_offs++].size = add_entry->size;
+    if(buffer->in_offs == AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)
+    {
+        buffer->in_offs = 0;
+    }
+
+    /* If buffer is full, increment read pointer */
+    if(buffer->full)
+    {
+        buffer->out_offs++;
+        if(buffer->out_offs == AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)
+        {
+            buffer->out_offs = 0;
+        }
+    }
+
+    /* Check if last entry and set full flag */
+    if((!(buffer->full)) && (buffer->in_offs == buffer->out_offs))
+    {
+        buffer->full = TRUE;
+    }
+    return;
 }
 
 /**
