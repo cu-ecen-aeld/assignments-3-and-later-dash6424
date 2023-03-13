@@ -1,4 +1,12 @@
 #include "systemcalls.h"
+#include <unistd.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -11,12 +19,17 @@ bool do_system(const char *cmd)
 {
 
 /*
- * TODO  add your code here
  *  Call the system() function with the command set in the cmd
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
 
+    int res = system(cmd);
+    if(res == -1)
+    {
+        printf("system call failed. error: %d\n", errno);
+	return false;
+    }    
     return true;
 }
 
@@ -59,6 +72,50 @@ bool do_exec(int count, ...)
  *
 */
 
+    pid_t pid = fork();  // Fork process
+    if(pid == -1)
+    {
+        perror("Fork failure");
+	return false;
+    }
+    else if (pid == 0)  //EXEC process
+    {
+        if(execv(command[0], command) == -1)
+	{
+            perror ("execv failure");
+	}
+	//Comes here only if there's an error in execv
+        printf("Error executing execv: %d\n", errno);
+        exit(1);
+    }
+    else  // Wait process.
+    {
+        int status = 0;
+	pid_t wait_pid = waitpid(pid, &status, 0);
+	if(wait_pid == -1)
+	{
+            printf("Error executing wait_pid: %d\n", errno);
+            perror("wait failure");
+	    return false;
+	}
+	else
+	{
+            //Check if process exited as expected
+	    if(WIFEXITED(status))
+	    {
+                //Check the exit status of the process
+		if(WEXITSTATUS(status) != 0)
+		{
+                    return false;
+		}
+	    }
+	    else
+	    {
+                return false;
+	    }
+	}
+    }
+
     va_end(args);
 
     return true;
@@ -93,7 +150,57 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *
 */
 
-    va_end(args);
+    //Open output file
+    int fd = open(outputfile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if(fd == -1)
+    {
+        perror("open");
+	return false;
+    }
 
+    //Create new child process
+    int kidpid = fork();
+
+    switch(kidpid)
+    {
+        case -1:
+            perror("fork");
+            return false;
+	case 0:
+	    if(dup2(fd, 1) < 0)
+	    {
+                perror("dup2");
+		exit(1);
+	    }
+	    close(fd);
+	    execv(command[0], command);
+	    perror("execv");
+	    exit(1);
+	default:
+	    close(fd);
+	    int status;
+	    pid_t wait_pid = waitpid(kidpid, &status, 0);
+	    if(wait_pid == -1)
+	    {
+                perror("wait");
+		return false;
+	    }
+	    else
+	    {
+                if(WIFEXITED(status))
+                {
+                    if(WEXITSTATUS(status) != 0)
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    return false;
+                }
+            }
+    }
+
+    va_end(args);
     return true;
 }
