@@ -31,10 +31,18 @@
 /*==========================================================================
   MACROS
 ========================================================================== */
+/* Comment below line for normals AESD Socket test */
+#define USE_AESD_CHAR_DEVICE 1
+
 #define BACKLOG 15
 #define INIT_BUF_SIZE 1024
+
+#ifndef USE_AESD_CHAR_DEVICE
 #define SOCKET_ADDR "/var/tmp/aesdsocketdata"
 #define TIME_PERIOD 10
+#else
+#define SOCKET_ADDR "/dev/aesdchar"
+#endif
 
 /*==========================================================================
   Global Declarations
@@ -48,8 +56,9 @@ typedef struct
     int client_fd;
     int fd;
     struct sockaddr_in *client_addr;
+#ifndef USE_AESD_CHAR_DEVICE
     pthread_mutex_t *mutex;
-    
+#endif
 }thread_data_t;
 
 typedef struct node
@@ -58,14 +67,31 @@ typedef struct node
     struct node *next;
 }node_t;
 
+#ifndef USE_AESD_CHAR_DEVICE
 typedef struct
 {
     pthread_t thread_id;
     int fd;
     pthread_mutex_t *mutex;
 }timer_node_t;
+#endif
 
-void ll_clean(node_t **head, int is_clear);
+/*==========================================================================
+  Function Declarations
+========================================================================== */
+/* Description: ll_clean
+ * Clears the linked list and joins the
+ * threads associated with each ll node
+ *
+ * Parameters:
+ * head	: Points to the head node of ll
+ * is_clear : TRUE - Free all the nodes
+ *            False - Free node only if thread complete flag is set.
+ *
+ * Return Type:
+ * void     : No return type required.
+ */
+static void ll_clean(node_t **head, int is_clear);
 
 /*==========================================================================
   Function Definitions
@@ -89,6 +115,15 @@ void sig_handler(int signum)
     }
 }
 
+/* Description: signal_init
+ * Initialize signal handler for SIGINT & SIGTERM
+ *
+ * Parameters:
+ * void     : No parameters required.
+ *
+ * Return Type:
+ * int      : 0 on Success. Exit on failure.
+ */
 int signal_init()
 {
     struct sigaction sig_action;
@@ -153,6 +188,7 @@ static int daemon_create()
     return 0;
 }
 
+#ifndef USE_AESD_CHAR_DEVICE
 void *timer_thread(void *thread_params)
 {
     if(NULL == thread_params)
@@ -229,6 +265,7 @@ void *timer_thread(void *thread_params)
     }
     return NULL;
 }
+#endif
 
 void *thread_socket(void *thread_params)
 {
@@ -314,13 +351,14 @@ void *thread_socket(void *thread_params)
         /* Malloc 1kB for reading the buffer */
         char read_buffer[INIT_BUF_SIZE] = {0};
 
+#ifndef USE_AESD_CHAR_DEVICE
         /* Mutex lock */
         if(0 != pthread_mutex_lock(thread_data->mutex))
         {
             perror("Mutex Lock Failed: ");
             goto err_handling;
         }
-
+#endif
         //Write to file
         write(thread_data->fd, storage_buffer, bytes_to_write);        
 
@@ -336,12 +374,13 @@ void *thread_socket(void *thread_params)
             }
         }
 
+#ifndef USE_AESD_CHAR_DEVICE
         /* Mutex unlock */
         if(0 != pthread_mutex_unlock(thread_data->mutex))
         {
             perror("Mutex unlock failed: ");
         }
-
+#endif
         if(-1 == rd_bytes)
         {
             perror("read failed: ");
@@ -493,6 +532,7 @@ int main(int argc, char **argv)
         return -1;
     }
 
+#ifndef USE_AESD_CHAR_DEVICE
     /* Mutex init */
     pthread_mutex_t mutex;
     pthread_mutex_init(&mutex, NULL);
@@ -510,6 +550,7 @@ int main(int argc, char **argv)
     {
         syslog(LOG_DEBUG, "Thread create successful. thread = %ld", timer_node.thread_id);
     }
+#endif
 
     /* Linked List head */
     node_t *head = NULL;
@@ -543,8 +584,9 @@ int main(int argc, char **argv)
         new_node->thread_data.client_fd = client_fd;
         new_node->thread_data.client_addr = (struct sockaddr_in *)&test_addr;
         new_node->thread_data.fd = fd;
+#ifndef USE_AESD_CHAR_DEVICE
         new_node->thread_data.mutex = &mutex;
-
+#endif
         /* Create a new thread */
         int res = pthread_create(&(new_node->thread_data.thread_id), NULL, thread_socket, &(new_node->thread_data));
         if(res == 0)
@@ -585,11 +627,13 @@ int main(int argc, char **argv)
         perror("unlink failed: ");
     }
 
+#ifndef USE_AESD_CHAR_DEVICE
     /* Thread join timer threads */
     pthread_join(timer_node.thread_id, NULL);
 
     //Destroy pthread
     pthread_mutex_destroy(&mutex);
+#endif
 
     //Close log
     closelog();
@@ -597,7 +641,19 @@ int main(int argc, char **argv)
     return 0;
 }
 
-void ll_clean(node_t **head, int is_clear)
+/* Description: ll_clean
+ * Clears the linked list and joins the
+ * threads associated with each ll node
+ *
+ * Parameters:
+ * head	: Points to the head node of ll
+ * is_clear : TRUE - Free all the nodes
+ *            False - Free node only if thread complete flag is set.
+ *
+ * Return Type:
+ * void     : No return type required.
+ */
+static void ll_clean(node_t **head, int is_clear)
 {
     if(!head || !(*head))
     {

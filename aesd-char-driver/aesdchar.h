@@ -25,9 +25,10 @@
 
 struct aesd_dev
 {
-    /**
-     * TODO: Add structure(s) and locks needed to complete assignment requirements
-     */
+    struct aesd_circular_buffer circ_buffer; // Circular buffer struct handle
+    struct mutex lock;                       // Mutex variable
+    char *cb_buffer;                         // Circular buffer for entry
+    char cb_size;                            // Circular buffer size
     struct cdev cdev;     /* Char device structure      */
 };
 
