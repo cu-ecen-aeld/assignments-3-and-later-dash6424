@@ -17,19 +17,13 @@
 #endif
 
 #define AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED 10
-/* Comment below line for normal CB test */
-#define USE_AESD_CHAR_DEVICE 1
 
 struct aesd_buffer_entry
 {
     /**
      * A location where the buffer contents in buffptr are stored
      */
-#ifndef USE_AESD_CHAR_DEVICE
     const char *buffptr;
-#else
-    char *buffptr;
-#endif
     /**
      * Number of bytes stored in buffptr
      */

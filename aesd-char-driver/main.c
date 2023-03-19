@@ -52,7 +52,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 {
     ssize_t retval = 0;
     ssize_t offset_bytes_rtn = 0, temp_buffer_count = 0;
-    struct aesd_buffer_entry *temp_buffer;
+    struct aesd_buffer_entry *temp_buffer = NULL;
     struct aesd_dev *dev = filp->private_data;
     if(!dev)
     {
