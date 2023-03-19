@@ -10,7 +10,6 @@
  * @copyright Copyright (c) 2019
  *
  */
-
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/printk.h>
@@ -18,6 +17,8 @@
 #include <linux/cdev.h>
 #include <linux/fs.h> // file_operations
 #include "aesdchar.h"
+#include "linux/slab.h"
+#include "linux/string.h"
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
@@ -50,9 +51,6 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos)
 {
     ssize_t retval = 0;
-
-    PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
-    
     ssize_t offset_bytes_rtn = 0, temp_buffer_count = 0;
     struct aesd_buffer_entry *temp_buffer;
     struct aesd_dev *dev = filp->private_data;
@@ -60,6 +58,9 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     {
         return -EFAULT;
     }
+
+    PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
+
     /* Aquire mutex */
     if(0 != mutex_lock_interruptible(&aesd_device.lock))
     {
@@ -100,16 +101,20 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
     ssize_t retval = 0;
+    struct aesd_dev *dev = NULL;                // Dev handle
+    int complete_flag = 0, actual_size = 0;     // Required elements to determine if complete packet received from user
+    struct aesd_buffer_entry aesd_buffer_write; // Write buffer entry
+    char *return_buff = NULL;                   // Overflown buffer
+    char *cb_buffer = NULL;                     // Offsets to the dev->cb_buffer
+    int i = 0;
+
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
     
-    struct aesd_dev *dev = filp->private_data;  // Dev handle
+    dev = filp->private_data;
     if(!dev)
     {
         return -EFAULT;
     }
-    int complete_flag = 0, actual_size = 0;     // Required elements to determine if complete packet received from user
-    struct aesd_buffer_entry aesd_buffer_write; // Write buffer entry
-    char *return_buff = NULL;                   // Overflown buffer
 
     /* Mutex lock */
     if(0 != mutex_lock_interruptible(&aesd_device.lock))
@@ -131,13 +136,13 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         goto err_handle;
     }
     /* Copy userspace buffer to kernel memory */
-    char *cb_buffer = (dev->cb_buffer + dev->cb_size);
+    cb_buffer = (dev->cb_buffer + dev->cb_size);
     if(copy_from_user(cb_buffer, buf, count))
     {
         retval = -EFAULT;
         goto err_handle;
     }
-    for(int i = 0; i < count; i++)
+    for(i = 0; i < count; i++)
     {
         if(cb_buffer[i] == '\n')
         {
@@ -153,7 +158,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         aesd_buffer_write.size = dev->cb_size;
         return_buff = aesd_circular_buffer_add_entry(&(dev->circ_buffer), &aesd_buffer_write);
         /* If circular buffer was overwritten, free the buffer entry that was overwritten */
-        if((return_buff) && (dev->aesd_circular_buffer.full))
+        if((return_buff) && (dev->circ_buffer.full))
         {
             kfree(return_buff);
             return_buff = NULL;
@@ -227,13 +232,13 @@ int aesd_init_module(void)
 
 void aesd_cleanup_module(void)
 {
+    /* Clean up the Circular buffer */
+    struct aesd_buffer_entry *tmp_entry = NULL;
+    int idx = 0;
     dev_t devno = MKDEV(aesd_major, aesd_minor);
 
     cdev_del(&aesd_device.cdev);
 
-    /* Clean up the Circular buffer */
-    aesd_buffer_entry *tmp_entry;
-    int idx = 0;
     AESD_CIRCULAR_BUFFER_FOREACH(tmp_entry, &aesd_device.circ_buffer, idx)
     {
       kfree(tmp_entry->buffptr);

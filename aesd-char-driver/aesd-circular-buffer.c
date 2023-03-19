@@ -38,18 +38,18 @@
 struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct aesd_circular_buffer *buffer,
             size_t char_offset, size_t *entry_offset_byte_rtn )
 {
-    /* NULL check */
-    if((!buffer) || (!entry_offset_byte_rtn))
-    {
-        return NULL;
-    }
-
     /* total bytes store the overall size of all the entries.
      * tmp_offset decremental offset to find the offset within an entry */
     size_t total_bytes = 0, tmp_offset = char_offset;
 
     /* read offset points to oldest buffer in the queue*/
     uint8_t read_offset = buffer->out_offs, i = 0;
+
+    /* NULL check */
+    if((!buffer) || (!entry_offset_byte_rtn))
+    {
+        return NULL;
+    }
 
     /* Iterate through the CB queue and find the required entry and offset */
     for(i=0; i<AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; i++)
@@ -94,7 +94,7 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 * Any necessary locking must be handled by the caller
 * Any memory referenced in @param add_entry must be allocated by and/or must have a lifetime managed by the caller.
 */
-void *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
+char *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
     char *res = NULL;
 
@@ -107,7 +107,7 @@ void *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const 
     /* If buffer is full return the buffer to free before overwrite */
     if(buffer->full)
     {
-        res = buffer->entry[buffer->in_offs].buffptr;
+        res = (char *)buffer->entry[buffer->in_offs].buffptr;
     }
     /* Populate the entry buffer irrespective of buffer is full or not */
     buffer->entry[buffer->in_offs].buffptr = add_entry->buffptr;

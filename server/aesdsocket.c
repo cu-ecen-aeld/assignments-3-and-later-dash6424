@@ -31,7 +31,7 @@
 /*==========================================================================
   MACROS
 ========================================================================== */
-/* Comment below line for normals AESD Socket test */
+/* Comment below line for normal AESD Socket test */
 #define USE_AESD_CHAR_DEVICE 1
 
 #define BACKLOG 15
