@@ -362,8 +362,10 @@ void *thread_socket(void *thread_params)
         //Write to file
         write(thread_data->fd, storage_buffer, bytes_to_write);        
 
+#ifndef USE_AESD_CHAR_DEVICE
         //Set the fd to start of the file.
         lseek(thread_data->fd, 0, SEEK_SET);
+#endif
 
         while((rd_bytes = read(thread_data->fd, read_buffer, INIT_BUF_SIZE)) > 0)
         {
