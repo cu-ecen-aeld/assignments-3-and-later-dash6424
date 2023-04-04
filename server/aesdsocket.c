@@ -549,6 +549,7 @@ int main(int argc, char **argv)
         return -1;
     }
 
+#if 0
     /* Open a file */
     int fd = open(SOCKET_ADDR, (O_CREAT | O_TRUNC | O_RDWR), (S_IRWXU | S_IRWXG | S_IROTH));
     if(fd == -1)
@@ -557,16 +558,25 @@ int main(int argc, char **argv)
         perror("Error opening socket file:");
         return -1;
     }
+#endif
 
 #ifndef USE_AESD_CHAR_DEVICE
     /* Mutex init */
     pthread_mutex_t mutex;
     pthread_mutex_init(&mutex, NULL);
 
+    int timer_fd = open(SOCKET_ADDR, (O_CREAT | O_TRUNC | O_RDWR), (S_IRWXU | S_IRWXG | S_IROTH));
+    if(timer_fd == -1)
+    {
+        closelog();
+        perror("Error opening socket file:");
+        return -1;
+    }
+
     /* Timer thread create */
     timer_node_t timer_node;
     timer_node.mutex = &mutex;
-    timer_node.fd = fd;
+    timer_node.fd = timer_fd;
     if(0 != pthread_create(&(timer_node.thread_id), NULL, timer_thread, &timer_node))
     {
         /* Still continue if failure is seen */
@@ -583,6 +593,10 @@ int main(int argc, char **argv)
 
     struct sockaddr_storage test_addr;          // Test addr to populate from accept()
     socklen_t addr_size = sizeof(test_addr);    // Size of test addr
+    
+    /* Bool to check if host fd is already created */
+    bool is_fd_created = 0;
+    int fd;
 
     while(!complete_exec)
     {
@@ -598,6 +612,19 @@ int main(int argc, char **argv)
             perror("accept failure: ");
             break;
         }
+
+        /* Open a file */
+	if(!is_fd_created)
+	{
+            fd = open(SOCKET_ADDR, (O_CREAT | O_TRUNC | O_RDWR), (S_IRWXU | S_IRWXG | S_IROTH));
+            if(fd == -1)
+            {
+                closelog();
+                perror("Error opening socket file:");
+                return -1;
+            }
+	    is_fd_created = 1;
+	}
 
         /* Create new node and add to the linked list */
         node_t *new_node = (node_t *)malloc(sizeof(node_t));
@@ -656,6 +683,11 @@ int main(int argc, char **argv)
 #ifndef USE_AESD_CHAR_DEVICE
     /* Thread join timer threads */
     pthread_join(timer_node.thread_id, NULL);
+
+    if (close(timer_fd) == -1)
+    {
+        perror("close timer fd failed: ");
+    }
 
     //Destroy pthread
     pthread_mutex_destroy(&mutex);
