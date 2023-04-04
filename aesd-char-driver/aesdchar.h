@@ -31,6 +31,7 @@ struct aesd_dev
     struct mutex lock;                       // Mutex variable
     char *cb_buffer;                         // Circular buffer for entry
     char cb_size;                            // Circular buffer size
+    size_t circ_total_size;                  // Circualr buffer total size
     struct cdev cdev;     /* Char device structure      */
 };
 

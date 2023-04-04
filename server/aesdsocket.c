@@ -27,6 +27,8 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <pthread.h>
+#include <stdbool.h>
+#include "../aesd-char-driver/aesd_ioctl.h"
 
 /*==========================================================================
   MACROS
@@ -91,7 +93,7 @@ typedef struct
  * Return Type:
  * void     : No return type required.
  */
-static void ll_clean(node_t **head, int is_clear);
+static void ll_clean(node_t **head, bool is_clear);
 
 /*==========================================================================
   Function Definitions
@@ -351,6 +353,25 @@ void *thread_socket(void *thread_params)
         /* Malloc 1kB for reading the buffer */
         char read_buffer[INIT_BUF_SIZE] = {0};
 
+        /* IOCTL operation */
+        bool ioctl_flag = 0;
+        char *ioctl_buff = storage_buffer;
+        char *ioctl_str =  "AESDCHAR_IOCSEEKTO:";
+        /* Check if the recvd string is related to ioctl operation */
+        if(0 == strncmp(ioctl_buff, ioctl_str, strlen(ioctl_str)))
+        {
+            struct aesd_seekto seek;            // IOCTL seek
+            ioctl_buff += strlen(ioctl_str);    // Point to the aesd_seek params.
+            /* Parse the string and populate write_cmd & write_cmd_offset */
+            sscanf(ioctl_buff, "%d,%d", &seek.write_cmd, &seek.write_cmd_offset);
+            /* Perform IOCTL */
+            if(ioctl(thread_data->fd, AESDCHAR_IOCSEEKTO, &seek))
+            {
+                perror("ioctl failed: ");
+            }
+            ioctl_flag = 1;
+        }
+
 #ifndef USE_AESD_CHAR_DEVICE
         /* Mutex lock */
         if(0 != pthread_mutex_lock(thread_data->mutex))
@@ -359,8 +380,11 @@ void *thread_socket(void *thread_params)
             goto err_handling;
         }
 #endif
-        //Write to file
-        write(thread_data->fd, storage_buffer, bytes_to_write);        
+        if(!ioctl_flag)
+        {
+            //Write to file
+            write(thread_data->fd, storage_buffer, bytes_to_write);  
+        }      
 
 #ifndef USE_AESD_CHAR_DEVICE
         //Set the fd to start of the file.
@@ -655,7 +679,7 @@ int main(int argc, char **argv)
  * Return Type:
  * void     : No return type required.
  */
-static void ll_clean(node_t **head, int is_clear)
+static void ll_clean(node_t **head, bool is_clear)
 {
     if(!head || !(*head))
     {

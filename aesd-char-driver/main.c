@@ -19,6 +19,8 @@
 #include "aesdchar.h"
 #include "linux/slab.h"
 #include "linux/string.h"
+#include "aesd_ioctl.h"
+
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
@@ -105,6 +107,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     int complete_flag = 0, actual_size = 0;     // Required elements to determine if complete packet received from user
     struct aesd_buffer_entry aesd_buffer_write; // Write buffer entry
     char *return_buff = NULL;                   // Overflown buffer
+    size_t ret_entry_size = 0;                  // Overflown buffer size
     char *cb_buffer = NULL;                     // Offsets to the dev->cb_buffer
     int i = 0;
 
@@ -156,10 +159,18 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         dev->cb_size += actual_size;
         aesd_buffer_write.buffptr = dev->cb_buffer;
         aesd_buffer_write.size = dev->cb_size;
-        return_buff = aesd_circular_buffer_add_entry(&(dev->circ_buffer), &aesd_buffer_write);
+        return_buff = aesd_circular_buffer_add_entry(&(dev->circ_buffer), &aesd_buffer_write, &ret_entry_size);
+
+        /* Update the total buffer size */
+        dev->circ_total_size += dev->cb_size;
+
         /* If circular buffer was overwritten, free the buffer entry that was overwritten */
         if((return_buff) && (dev->circ_buffer.full))
         {
+            /* Update the total buffer size */
+            dev->circ_total_size -= ret_entry_size;
+
+            /* Free the entry buffer */
             kfree(return_buff);
             return_buff = NULL;
         }
@@ -177,6 +188,81 @@ err_handle:
     return retval;
 }
 
+loff_t aesd_llseek(struct file *filp, loff_t off, int whence)
+{
+    struct aesd_dev *dev = filp->private_data;
+    return fixed_size_llseek(filp, off, whence, dev->circ_total_size);
+}
+
+long aesd_unlocked_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+    long retval = 0;
+    int i = 0, fpos = 0;
+    /* seek to sructure for user command parsing */
+    struct aesd_seekto seek;
+    /* Dev handle */
+    struct aesd_dev *dev = filp->private_data;
+
+    /* Check if the cmd received is valid for the given aesd kernel driver */
+    if((_IOC_TYPE(cmd) != AESD_IOC_MAGIC) || (_IOC_NR(cmd) > AESDCHAR_IOC_MAXNR) || (AESDCHAR_IOCSEEKTO != cmd))
+    {
+        /* -ENOTTY is error type for invalid ioctl command */
+        return -ENOTTY;
+    }
+
+    /* Copy arguments from the user */
+    if(0 != copy_from_user(&seek, (const void __user *)arg, sizeof(seek)))
+    {
+        return -EFAULT;
+    }
+
+    /* Check if the write cmd entry is valid */
+    if(seek.write_cmd >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)
+    {
+        return -EINVAL;
+    }
+
+    /* Mutex lock */
+    if(0 != mutex_lock_interruptible(&aesd_device.lock))
+    {
+        return -EINTR;
+    }
+
+    /* Check if the write cmd offset is valid */
+    if(seek.write_cmd_offset >= dev->circ_buffer.entry[seek.write_cmd].size)
+    {
+        retval = -EINVAL;
+        goto err_handle;
+    }   
+
+    /* Iterate through the circ buff entries and update the offset */
+    for(i = 0; i < seek.write_cmd; i++)
+    {
+        /* Check if entry has no bytes */
+        if(0 == dev->circ_buffer.entry[i].size)
+        {
+            retval = -EINVAL;
+            goto err_handle;
+        }
+        fpos += dev->circ_buffer.entry[i].size;
+    }
+
+    /* Unlock mutex */
+    mutex_unlock(&aesd_device.lock);
+
+    /* Update the fpos for the current entry aswell */
+    fpos += seek.write_cmd_offset;
+
+    /* Update the file position to the offset in filp */
+    filp->f_pos = fpos;
+
+    return retval;
+
+err_handle:
+    /* Unlock mutex */
+    mutex_unlock(&aesd_device.lock);
+    return retval;
+}
 
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
@@ -184,6 +270,8 @@ struct file_operations aesd_fops = {
     .write =    aesd_write,
     .open =     aesd_open,
     .release =  aesd_release,
+    .unlocked_ioctl = aesd_unlocked_ioctl,
+    .llseek =   aesd_llseek,
 };
 
 static int aesd_setup_cdev(struct aesd_dev *dev)
