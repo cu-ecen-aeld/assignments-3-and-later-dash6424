@@ -122,8 +122,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     struct aesd_dev *dev = NULL;                // Dev handle
     int complete_flag = 0, actual_size = 0;     // Required elements to determine if complete packet received from user
     struct aesd_buffer_entry aesd_buffer_write; // Write buffer entry
-    char *return_buff = NULL;                   // Overflown buffer
-    size_t ret_entry_size = 0;                  // Overflown buffer size
+    struct aesd_buffer_entry *return_buff = NULL;                   // Overflown buffer
     char *cb_buffer = NULL;                     // Offsets to the dev->cb_buffer
     int i = 0;
 
@@ -181,20 +180,20 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         dev->cb_size += actual_size;
         aesd_buffer_write.buffptr = dev->cb_buffer;
         aesd_buffer_write.size = dev->cb_size;
-        return_buff = aesd_circular_buffer_add_entry(&(dev->circ_buffer), &aesd_buffer_write, &ret_entry_size);
+        return_buff = aesd_circular_buffer_add_entry(&(dev->circ_buffer), &aesd_buffer_write);
 
         /* Update the total buffer size */
         dev->circ_total_size += dev->cb_size;
 
         /* If circular buffer was overwritten, free the buffer entry that was overwritten */
-        if((return_buff) && (dev->circ_buffer.full))
+        if((return_buff) && (return_buff->buffptr) && (dev->circ_buffer.full))
         {
             /* Update the total buffer size */
-            dev->circ_total_size -= ret_entry_size;
+            dev->circ_total_size -= return_buff->size;
 
             /* Free the entry buffer */
-            kfree(return_buff);
-            return_buff = NULL;
+            kfree(return_buff->buffptr);
+            return_buff->buffptr = NULL;
         }
         /* Free the buffer size for next entry */
         dev->cb_size = 0;
