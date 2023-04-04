@@ -549,17 +549,6 @@ int main(int argc, char **argv)
         return -1;
     }
 
-#if 0
-    /* Open a file */
-    int fd = open(SOCKET_ADDR, (O_CREAT | O_TRUNC | O_RDWR), (S_IRWXU | S_IRWXG | S_IROTH));
-    if(fd == -1)
-    {
-        closelog();
-        perror("Error opening socket file:");
-        return -1;
-    }
-#endif
-
 #ifndef USE_AESD_CHAR_DEVICE
     /* Mutex init */
     pthread_mutex_t mutex;

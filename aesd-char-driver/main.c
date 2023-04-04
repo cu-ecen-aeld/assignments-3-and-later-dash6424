@@ -63,8 +63,8 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     }
     if(!buf)
     {
-        PDEBUG("Dandebug: aesd_read user buffer is NULL");
-        return retval;
+	/* User buffer is NULL. */
+        return -EFAULT;
     }
 
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
@@ -82,13 +82,8 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     }
     if(!(temp_buffer->buffptr))
     {
-	PDEBUG("Dandebug: temp buffer is NULL");
-	mutex_unlock(&aesd_device.lock);
-	return retval;
+	goto err_handle;
     }
-
-    PDEBUG("Dandebug: temp buff size = %d, offset bytes rtn = %d", temp_buffer->size, offset_bytes_rtn);
-
 
     /* Temp buffer count  */
     temp_buffer_count = temp_buffer->size - offset_bytes_rtn;
@@ -119,17 +114,16 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
     ssize_t retval = 0;
-    struct aesd_dev *dev = NULL;                // Dev handle
-    int complete_flag = 0, actual_size = 0;     // Required elements to determine if complete packet received from user
-    struct aesd_buffer_entry aesd_buffer_write; // Write buffer entry
-    struct aesd_buffer_entry *return_buff = NULL;                   // Overflown buffer
-    char *cb_buffer = NULL;                     // Offsets to the dev->cb_buffer
+    struct aesd_dev *dev = NULL;                    // Dev handle
+    int complete_flag = 0, actual_size = 0;         // Required elements to determine if complete packet received from user
+    struct aesd_buffer_entry aesd_buffer_write;     // Write buffer entry
+    struct aesd_buffer_entry *return_buff = NULL;   // Overflown entry
+    char *cb_buffer = NULL;                         // Offsets to the dev->cb_buffer
     int i = 0;
 
     if(!buf)
     {
-	PDEBUG("Dandebug: aesd_write user buffer is NULL");
-	return retval;
+	return -EFAULT;
     }
 
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
