@@ -299,8 +299,8 @@ void *thread_socket(void *thread_params)
 
     
     int actual_bytes_rcvd = 0;
-    int bytes_rcvd;                             // Stores the bytes received from recv function
-    int bytes_to_write;                         // Number of bytes to be written to fd.
+    int bytes_rcvd = 0;                             // Stores the bytes received from recv function
+    int bytes_to_write = 0;                         // Number of bytes to be written to fd.
     ssize_t rd_bytes = 0;
 
     // Receive bytes by polling the client fd for every 1024 bytes

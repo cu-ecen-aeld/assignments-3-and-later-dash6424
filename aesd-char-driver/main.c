@@ -19,6 +19,7 @@
 #include "aesdchar.h"
 #include "linux/slab.h"
 #include "linux/string.h"
+#include <linux/uaccess.h>
 #include "aesd_ioctl.h"
 
 int aesd_major =   0; // use dynamic major
@@ -60,6 +61,11 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     {
         return -EFAULT;
     }
+    if(!buf)
+    {
+        PDEBUG("Dandebug: aesd_read user buffer is NULL");
+        return retval;
+    }
 
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
 
@@ -74,6 +80,16 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
         *f_pos = 0;
         goto err_handle;
     }
+    if(!(temp_buffer->buffptr))
+    {
+	PDEBUG("Dandebug: temp buffer is NULL");
+	mutex_unlock(&aesd_device.lock);
+	return retval;
+    }
+
+    PDEBUG("Dandebug: temp buff size = %d, offset bytes rtn = %d", temp_buffer->size, offset_bytes_rtn);
+
+
     /* Temp buffer count  */
     temp_buffer_count = temp_buffer->size - offset_bytes_rtn;
     if(temp_buffer_count < count)
@@ -110,6 +126,12 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     size_t ret_entry_size = 0;                  // Overflown buffer size
     char *cb_buffer = NULL;                     // Offsets to the dev->cb_buffer
     int i = 0;
+
+    if(!buf)
+    {
+	PDEBUG("Dandebug: aesd_write user buffer is NULL");
+	return retval;
+    }
 
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
     
