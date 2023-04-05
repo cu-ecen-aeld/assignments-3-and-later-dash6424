@@ -27,6 +27,8 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <pthread.h>
+#include <stdbool.h>
+#include "../aesd-char-driver/aesd_ioctl.h"
 
 /*==========================================================================
   MACROS
@@ -91,7 +93,7 @@ typedef struct
  * Return Type:
  * void     : No return type required.
  */
-static void ll_clean(node_t **head, int is_clear);
+static void ll_clean(node_t **head, bool is_clear);
 
 /*==========================================================================
   Function Definitions
@@ -297,8 +299,8 @@ void *thread_socket(void *thread_params)
 
     
     int actual_bytes_rcvd = 0;
-    int bytes_rcvd;                             // Stores the bytes received from recv function
-    int bytes_to_write;                         // Number of bytes to be written to fd.
+    int bytes_rcvd = 0;                             // Stores the bytes received from recv function
+    int bytes_to_write = 0;                         // Number of bytes to be written to fd.
     ssize_t rd_bytes = 0;
 
     // Receive bytes by polling the client fd for every 1024 bytes
@@ -351,6 +353,25 @@ void *thread_socket(void *thread_params)
         /* Malloc 1kB for reading the buffer */
         char read_buffer[INIT_BUF_SIZE] = {0};
 
+        /* IOCTL operation */
+        bool ioctl_flag = 0;
+        char *ioctl_buff = storage_buffer;
+        char *ioctl_str =  "AESDCHAR_IOCSEEKTO:";
+        /* Check if the recvd string is related to ioctl operation */
+        if(0 == strncmp(ioctl_buff, ioctl_str, strlen(ioctl_str)))
+        {
+            struct aesd_seekto seek;            // IOCTL seek
+            ioctl_buff += strlen(ioctl_str);    // Point to the aesd_seek params.
+            /* Parse the string and populate write_cmd & write_cmd_offset */
+            sscanf(ioctl_buff, "%d,%d", &seek.write_cmd, &seek.write_cmd_offset);
+            /* Perform IOCTL */
+            if(ioctl(thread_data->fd, AESDCHAR_IOCSEEKTO, &seek))
+            {
+                perror("ioctl failed: ");
+            }
+            ioctl_flag = 1;
+        }
+
 #ifndef USE_AESD_CHAR_DEVICE
         /* Mutex lock */
         if(0 != pthread_mutex_lock(thread_data->mutex))
@@ -359,8 +380,11 @@ void *thread_socket(void *thread_params)
             goto err_handling;
         }
 #endif
-        //Write to file
-        write(thread_data->fd, storage_buffer, bytes_to_write);        
+        if(!ioctl_flag)
+        {
+            //Write to file
+            write(thread_data->fd, storage_buffer, bytes_to_write);  
+        }      
 
 #ifndef USE_AESD_CHAR_DEVICE
         //Set the fd to start of the file.
@@ -525,24 +549,23 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    /* Open a file */
-    int fd = open(SOCKET_ADDR, (O_CREAT | O_TRUNC | O_RDWR), (S_IRWXU | S_IRWXG | S_IROTH));
-    if(fd == -1)
+#ifndef USE_AESD_CHAR_DEVICE
+    /* Mutex init */
+    pthread_mutex_t mutex;
+    pthread_mutex_init(&mutex, NULL);
+
+    int timer_fd = open(SOCKET_ADDR, (O_CREAT | O_TRUNC | O_RDWR), (S_IRWXU | S_IRWXG | S_IROTH));
+    if(timer_fd == -1)
     {
         closelog();
         perror("Error opening socket file:");
         return -1;
     }
 
-#ifndef USE_AESD_CHAR_DEVICE
-    /* Mutex init */
-    pthread_mutex_t mutex;
-    pthread_mutex_init(&mutex, NULL);
-
     /* Timer thread create */
     timer_node_t timer_node;
     timer_node.mutex = &mutex;
-    timer_node.fd = fd;
+    timer_node.fd = timer_fd;
     if(0 != pthread_create(&(timer_node.thread_id), NULL, timer_thread, &timer_node))
     {
         /* Still continue if failure is seen */
@@ -559,6 +582,10 @@ int main(int argc, char **argv)
 
     struct sockaddr_storage test_addr;          // Test addr to populate from accept()
     socklen_t addr_size = sizeof(test_addr);    // Size of test addr
+    
+    /* Bool to check if host fd is already created */
+    bool is_fd_created = 0;
+    int fd;
 
     while(!complete_exec)
     {
@@ -574,6 +601,19 @@ int main(int argc, char **argv)
             perror("accept failure: ");
             break;
         }
+
+        /* Open a file */
+	if(!is_fd_created)
+	{
+            fd = open(SOCKET_ADDR, (O_CREAT | O_TRUNC | O_RDWR), (S_IRWXU | S_IRWXG | S_IROTH));
+            if(fd == -1)
+            {
+                closelog();
+                perror("Error opening socket file:");
+                return -1;
+            }
+	    is_fd_created = 1;
+	}
 
         /* Create new node and add to the linked list */
         node_t *new_node = (node_t *)malloc(sizeof(node_t));
@@ -633,6 +673,11 @@ int main(int argc, char **argv)
     /* Thread join timer threads */
     pthread_join(timer_node.thread_id, NULL);
 
+    if (close(timer_fd) == -1)
+    {
+        perror("close timer fd failed: ");
+    }
+
     //Destroy pthread
     pthread_mutex_destroy(&mutex);
 #endif
@@ -655,7 +700,7 @@ int main(int argc, char **argv)
  * Return Type:
  * void     : No return type required.
  */
-static void ll_clean(node_t **head, int is_clear)
+static void ll_clean(node_t **head, bool is_clear)
 {
     if(!head || !(*head))
     {
